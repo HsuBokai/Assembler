@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Nand2tetris Assembler</title>
+<style type="text/css">
+#inText{
+	background-color:black;
+	color:white;
+	font-size:20px;
+	font-family: "Lucida Console", Monaco, monospace;
+	width:40%;
+	height:500px;
+}
+#outText{
+	background-color:black;
+	color:white;
+	font-size:20px;
+	font-family: "Lucida Console", Monaco, monospace;
+	width:40%;
+	height:500px;
+}
+</style>
+</head>
+
+<body>
+<textarea id="inText"></textarea>
+<textarea id="outText"></textarea>
+
+<script type="text/javascript">
+var dec2bin = function(num){
+	if(isNaN(num)) return "";
+	var bin = "";
+	var test = num.toString(2);
+	for(var i=test.length; i<15; ++i) bin += "0";
+	bin += test;
+	return bin
+}
+var parseAddr = function(text){
+	var num = parseInt(text,10);
+	if(isNaN(num)){
+		console.log("address error");
+		return "";
+	}
+	else return dec2bin(num);
+}
+var parseJmp = function(text){
+	if(text=="") return "000";
+	console.log(text);
+	switch(text){
+		case "JGT": return "001";
+		case "JEQ": return "010";
+		case "JGE": return "011";
+		case "JLT": return "100";
+		case "JNE": return "101";
+		case "JLE": return "110";
+		case "JMP": return "111";
+		default: console.log("jump error");return "";
+	}
+}
+var parseCompute = function(text){
+	if(text=="") return "0000000";
+	console.log(text);
+	switch(text){
+		case "0": 	return "0101010";
+		case "1": 	return "0111111";
+		case "-1": 	return "0111010";
+		case "D": 	return "0001100";
+
+		case "A": 	return "0110000";
+		case "!D": 	return "0001101";
+		case "!A": 	return "0110001";
+		case "-D": 	return "0001111";
+		case "-A": 	return "0110011";
+		case "D+1": 	return "0011111";
+		case "A+1": 	return "0110111";
+		case "D-1": 	return "0001110";
+		case "A-1": 	return "0110010";
+		case "D+A": 	return "0000010";
+		case "D-A": 	return "0010011";
+		case "A-D": 	return "0000111";
+		case "D&A": 	return "0000000";
+		case "D|A": 	return "0010101";
+
+		case "M": 	return "1110000";
+		case "!D": 	return "1001101";
+		case "!M": 	return "1110001";
+		case "-D": 	return "1001111";
+		case "-M": 	return "1110011";
+		case "D+1": 	return "1011111";
+		case "M+1": 	return "1110111";
+		case "D-1": 	return "1001110";
+		case "M-1": 	return "1110010";
+		case "D+M": 	return "1000010";
+		case "D-M": 	return "1010011";
+		case "M-D": 	return "1000111";
+		case "D&M": 	return "1000000";
+		case "D|M": 	return "1010101";
+	}
+}
+var parseDest = function(text){
+	if(text=="") return "000";
+	console.log(text);
+	// A D M
+	var dest = "";
+	dest += (text.indexOf("A")==-1) ? "0" : "1";
+	dest += (text.indexOf("D")==-1) ? "0" : "1";
+	dest += (text.indexOf("M")==-1) ? "0" : "1";
+	return dest
+}
+var FSM = {
+	createNew: function(stream){
+		var fsm = {};
+		fsm.isEnd = false;
+		fsm.outText = "";
+		fsm.commandNum = 0;
+		var outputCommand = function(command){
+			fsm.outText += command;
+			fsm.outText += "\n";
+			fsm.commandNum++;
+		}
+		var init = function(){
+			if(stream.isEnd()) { fsm.isEnd = true; return; }
+			var input = stream.next();
+			switch(input){
+				case " ":
+				case "\t":
+				case "\n": break;
+				case "@": fsm.state = a_command; break;
+				case "(": fsm.state = l_command; break;
+				default: 
+					fsm.record += input;
+					fsm.state = c_command; break;
+			}
+		}
+		var c_command = function(){
+			if(stream.isEnd()) { fsm.isEnd = true; return; }
+			var input = stream.next();
+			if(input=="\n" || input==" " || input=="\t"){
+				if(fsm.compute=="0000000"){
+					fsm.compute = parseCompute(fsm.record);
+					if(fsm.compute == "") { fsm.isEnd = true; return; }
+				}
+				else{
+					fsm.jmp = parseJmp(fsm.record);
+					if(fsm.jmp == "") { fsm.isEnd = true; return; }
+				}
+				outputCommand("111" + fsm.compute + fsm.dest + fsm.jmp);
+				fsm.reset();
+				fsm.record = "";
+				fsm.state = init;
+			}
+			else if(input==";"){
+				fsm.compute = parseCompute(fsm.record);
+				if(fsm.compute == "") { fsm.isEnd = true; return; }
+				fsm.record = "";
+			}
+			else if(input=="="){
+				fsm.dest = parseDest(fsm.record);
+				if(fsm.dest == "") { fsm.isEnd = true; return; }
+				fsm.record = "";
+			}
+			else fsm.record += input;
+		}
+		var a_command = function(){
+			if(stream.isEnd()) { fsm.isEnd = true; return; }
+			var input = stream.next();
+			switch(input){
+				case " ":
+				case "\t":
+				case "\n":
+					var binAddr = parseAddr(fsm.record);
+					if(binAddr == "") { fsm.isEnd = true; return;}
+					outputCommand("0" + binAddr);
+					fsm.record = "";
+					fsm.state = init; break;
+				default: fsm.record += input; break;
+			}
+		}
+		var l_command = function(){
+			if(stream.isEnd()) { fsm.isEnd = true; return; }
+			var input = stream.next();
+			switch(input){
+				case " ":
+				case "\t":
+				case "\n": break;
+				case ")":
+					fsm.record = "";
+					fsm.state = init; break;
+				default: fsm.record += input; break;
+			}
+		}
+		fsm.jmp;
+		fsm.compute;
+		fsm.dest;
+		fsm.reset = function(){
+			fsm.jmp = "000";
+			fsm.compute = "0000000";
+			fsm.dest = "000";
+		}
+		fsm.record = "";
+		fsm.state = init;
+		fsm.run = function(){
+			fsm.reset();
+			while(fsm.isEnd==false){
+				fsm.state();
+			}
+		}
+		return fsm;
+	}
+}
+
+var Stream = {
+	createNew: function(arr, len){
+		var stream = {};
+		stream.current = 0;
+		stream.isEnd = function(){ return stream.current < 0 || stream.current >= len; }
+		stream.next = function(){ return arr.charAt(stream.current++); }
+		return stream;
+	}
+}
+
+var inTextarea = document.getElementById("inText");
+function nand2tetris(){
+	var inText = inTextarea.value;
+	var stream = Stream.createNew(inText, inText.length);
+	var fsm = FSM.createNew(stream);
+	fsm.run();
+	document.getElementById("outText").value = fsm.outText;
+}
+var outText = "";
+function rand01(){
+	var inText = inTextarea.value;
+	var len = inText.length;
+	if(inText[len-1]=="\n") outText += "\n";
+	else outText += (Math.random()<0.5)?"0":"1";
+	document.getElementById("outText").value = outText;
+}
+
+inTextarea.oninput = nand2tetris;
+//inTextarea.oninput = rand01;
+</script>
+</body>
+</html>
