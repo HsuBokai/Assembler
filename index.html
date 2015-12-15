@@ -292,11 +292,12 @@ var FSM = {
 			compute = "0000000";
 			dest = "000";
 		}
-		fsm.set_a_command = function(p1){
+		fsm.run = function(p1){
 			a_command = (p1==1) ? a_command_first : a_command_second;
-		}
-		fsm.run = function(){
+			stream.reset();
+			output.reset();
 			reset();
+			record = "";
 			state = init;
 			isEnd = false;
 			while(isEnd==false){
@@ -307,8 +308,7 @@ var FSM = {
 		var jmp;
 		var compute;
 		var dest;
-		var record = "";
-		reset();
+		var record;
 		var a_command;
 		var state;
 		var isEnd;
@@ -323,14 +323,8 @@ function nand2tetris(){
 	var symbol_table = SymbolTable.createNew();
 	var output = Output.createNew();
 	var fsm = FSM.createNew(stream, symbol_table, output);
-	stream.reset();
-	output.reset();
-	fsm.set_a_command(1);
-	fsm.run();
-	stream.reset();
-	output.reset();
-	fsm.set_a_command(2);
-	fsm.run();
+	fsm.run(1);
+	fsm.run(2);
 	document.getElementById("outText").value = output.getOutText();
 }
 inTextarea.oninput = nand2tetris;
