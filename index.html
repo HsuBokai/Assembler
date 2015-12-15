@@ -35,8 +35,7 @@ var dec2bin = function(num){
 	bin += test;
 	return bin
 }
-var parseAddr = function(text){
-	var num = parseInt(text,10);
+var parseAddr = function(num){
 	if(isNaN(num)){
 		console.log("address error");
 		return "";
@@ -45,7 +44,7 @@ var parseAddr = function(text){
 }
 var parseJmp = function(text){
 	if(text=="") return "000";
-	console.log(text);
+	//console.log(text);
 	switch(text){
 		case "JGT": return "001";
 		case "JEQ": return "010";
@@ -59,7 +58,7 @@ var parseJmp = function(text){
 }
 var parseCompute = function(text){
 	if(text=="") return "0000000";
-	console.log(text);
+	//console.log(text);
 	switch(text){
 		case "0": 	return "0101010";
 		case "1": 	return "0111111";
@@ -95,11 +94,13 @@ var parseCompute = function(text){
 		case "M-D": 	return "1000111";
 		case "D&M": 	return "1000000";
 		case "D|M": 	return "1010101";
+
+		default: console.log("compute error");return "";
 	}
 }
 var parseDest = function(text){
 	if(text=="") return "000";
-	console.log(text);
+	//console.log(text);
 	// A D M
 	var dest = "";
 	dest += (text.indexOf("A")==-1) ? "0" : "1";
@@ -107,115 +108,211 @@ var parseDest = function(text){
 	dest += (text.indexOf("M")==-1) ? "0" : "1";
 	return dest
 }
-var FSM = {
-	createNew: function(stream){
-		var fsm = {};
-		fsm.isEnd = false;
-		fsm.outText = "";
-		fsm.commandNum = 0;
-		var outputCommand = function(command){
-			fsm.outText += command;
-			fsm.outText += "\n";
-			fsm.commandNum++;
+var SymbolTable = {
+	createNew: function(){
+		var st = {};
+		var table = {};
+		table["R0"]=0;
+		table["R1"]=1;
+		table["R2"]=2;
+		table["R3"]=3;
+		table["R4"]=4;
+		table["R5"]=5;
+		table["R6"]=6;
+		table["R7"]=7;
+		table["R8"]=8;
+		table["R9"]=9;
+		table["R10"]=10;
+		table["R11"]=11;
+		table["R12"]=12;
+		table["R13"]=13;
+		table["R14"]=14;
+		table["R15"]=15;
+		table["SCREEN"]=16384;
+		table["KBD"]=24576;
+		table["SP"]=0;
+		table["LCL"]=1;
+		table["ARG"]=2;
+		table["THIS"]=3;
+		table["THAT"]=4;
+		var_addr = 16;
+		st.isInTable = function(symbol){ return table[symbol]!=undefined; }
+		st.pushVarAddr = function(symbol){ table[symbol]=var_addr++; }
+		st.pushCmdAddr = function(symbol, cmd_addr) { table[symbol]=cmd_addr; }
+		st.getTable = function(){ return table; }
+		st.getTableValue = function(key){ return table[key]; }
+		return st;
+	}
+}
+var Output = {
+	createNew: function(){
+		var output = {};
+		var commandNum;
+		var outText;
+		output.pushCommand = function(command){
+			outText += command;
+			outText += "\n";
+			commandNum++;
 		}
-		var init = function(){
-			if(stream.isEnd()) { fsm.isEnd = true; return; }
-			var input = stream.next();
-			switch(input){
-				case " ":
-				case "\t":
-				case "\n": break;
-				case "@": fsm.state = a_command; break;
-				case "(": fsm.state = l_command; break;
-				default: 
-					fsm.record += input;
-					fsm.state = c_command; break;
-			}
-		}
-		var c_command = function(){
-			if(stream.isEnd()) { fsm.isEnd = true; return; }
-			var input = stream.next();
-			if(input=="\n" || input==" " || input=="\t"){
-				if(fsm.compute=="0000000"){
-					fsm.compute = parseCompute(fsm.record);
-					if(fsm.compute == "") { fsm.isEnd = true; return; }
-				}
-				else{
-					fsm.jmp = parseJmp(fsm.record);
-					if(fsm.jmp == "") { fsm.isEnd = true; return; }
-				}
-				outputCommand("111" + fsm.compute + fsm.dest + fsm.jmp);
-				fsm.reset();
-				fsm.record = "";
-				fsm.state = init;
-			}
-			else if(input==";"){
-				fsm.compute = parseCompute(fsm.record);
-				if(fsm.compute == "") { fsm.isEnd = true; return; }
-				fsm.record = "";
-			}
-			else if(input=="="){
-				fsm.dest = parseDest(fsm.record);
-				if(fsm.dest == "") { fsm.isEnd = true; return; }
-				fsm.record = "";
-			}
-			else fsm.record += input;
-		}
-		var a_command = function(){
-			if(stream.isEnd()) { fsm.isEnd = true; return; }
-			var input = stream.next();
-			switch(input){
-				case " ":
-				case "\t":
-				case "\n":
-					var binAddr = parseAddr(fsm.record);
-					if(binAddr == "") { fsm.isEnd = true; return;}
-					outputCommand("0" + binAddr);
-					fsm.record = "";
-					fsm.state = init; break;
-				default: fsm.record += input; break;
-			}
-		}
-		var l_command = function(){
-			if(stream.isEnd()) { fsm.isEnd = true; return; }
-			var input = stream.next();
-			switch(input){
-				case " ":
-				case "\t":
-				case "\n": break;
-				case ")":
-					fsm.record = "";
-					fsm.state = init; break;
-				default: fsm.record += input; break;
-			}
-		}
-		fsm.jmp;
-		fsm.compute;
-		fsm.dest;
-		fsm.reset = function(){
-			fsm.jmp = "000";
-			fsm.compute = "0000000";
-			fsm.dest = "000";
-		}
-		fsm.record = "";
-		fsm.state = init;
-		fsm.run = function(){
-			fsm.reset();
-			while(fsm.isEnd==false){
-				fsm.state();
-			}
-		}
-		return fsm;
+		output.getOutText = function(){ return outText; }
+		output.getCommandNum = function(){ return commandNum; }
+		output.reset = function(){ outText = ""; commandNum = 0; }
+		output.reset();
+		return output;
 	}
 }
 
 var Stream = {
 	createNew: function(arr, len){
 		var stream = {};
-		stream.current = 0;
-		stream.isEnd = function(){ return stream.current < 0 || stream.current >= len; }
-		stream.next = function(){ return arr.charAt(stream.current++); }
+		var current = 0;
+		stream.isEnd = function(){ return current < 0 || current >= len; }
+		stream.next = function(){ return arr.charAt(current++); }
+		stream.reset = function(){ current=0; }
 		return stream;
+	}
+}
+
+var FSM = {
+	createNew: function(stream, symbol_table, output){
+		var fsm = {};
+		var init = function(input){
+			switch(input){
+				case " ":
+				case "\t":
+				case "\n": break;
+				case "@": state = a_command; break;
+				case "(": state = l_command; break;
+				case "/": state = comment_1; break;
+				default: 
+					record += input;
+					state = c_command; break;
+			}
+		}
+		var l_command = function(input){
+			switch(input){
+				case " ":
+				case "\t":
+				case "\n": break;
+				case ")":
+					if(symbol_table.isInTable(record)==false){
+						symbol_table.pushCmdAddr(record, output.getCommandNum());
+					}
+					record = "";
+					state = init; break;
+				default: record += input; break;
+			}
+		}
+		var comment_1 = function(input){
+			switch(input){
+				case "/": state = comment_11; break;
+				case "*": state = comment_10; break;
+				default:
+					console.log("comment single / error");
+					isEnd = true; 
+					break;
+			}
+		}
+		var comment_11 = function(input){
+			switch(input){
+				case "\n": state = init; break;
+			}
+		}
+		var comment_10 = function(input){
+			switch(input){
+				case "*": state = comment_100; break;
+			}
+		}
+		var comment_100 = function(input){
+			switch(input){
+				case "/": state = init; break;
+				default: state = comment_10; break;
+			}
+		}
+		var c_command = function(input){
+			if(input=="\n" || input==" " || input=="\t"){
+				if(compute=="0000000"){
+					compute = parseCompute(record);
+					if(compute == "") { isEnd = true; return; }
+				}
+				else{
+					jmp = parseJmp(record);
+					if(jmp == "") { isEnd = true; return; }
+				}
+				output.pushCommand("111" + compute + dest + jmp);
+				reset();
+				record = "";
+				state = init;
+			}
+			else if(input==";"){
+				compute = parseCompute(record);
+				if(compute == "") { isEnd = true; return; }
+				record = "";
+			}
+			else if(input=="="){
+				dest = parseDest(record);
+				if(dest == "") { isEnd = true; return; }
+				record = "";
+			}
+			else record += input;
+		}
+		var a_command_first = function(input){
+			switch(input){
+				case " ":
+				case "\t":
+				case "\n":
+					output.pushCommand("0");
+					record = "";
+					state = init; break;
+				default: record += input; break;
+			}
+		}
+		var a_command_second = function(input){
+			switch(input){
+				case " ":
+				case "\t":
+				case "\n":
+					var num = parseInt(record, 10);
+					if( isNaN(num) ){
+						if(symbol_table.isInTable(record)==false){
+							symbol_table.pushVarAddr(record);
+						}
+						num = symbol_table.getTableValue(record);
+					}
+					var binAddr = parseAddr(num);
+					if(binAddr == "") { isEnd = true; return;}
+					output.pushCommand("0" + binAddr);
+					record = "";
+					state = init; break;
+				default: record += input; break;
+			}
+		}
+		var reset = function(){
+			jmp = "000";
+			compute = "0000000";
+			dest = "000";
+		}
+		fsm.set_a_command = function(p1){
+			a_command = (p1==1) ? a_command_first : a_command_second;
+		}
+		fsm.run = function(){
+			reset();
+			state = init;
+			isEnd = false;
+			while(isEnd==false){
+				if(stream.isEnd()) isEnd = true;
+				else state(stream.next());
+			}
+		}
+		var jmp;
+		var compute;
+		var dest;
+		var record = "";
+		reset();
+		var a_command;
+		var state;
+		var isEnd;
+		return fsm;
 	}
 }
 
@@ -223,10 +320,21 @@ var inTextarea = document.getElementById("inText");
 function nand2tetris(){
 	var inText = inTextarea.value;
 	var stream = Stream.createNew(inText, inText.length);
-	var fsm = FSM.createNew(stream);
+	var symbol_table = SymbolTable.createNew();
+	var output = Output.createNew();
+	var fsm = FSM.createNew(stream, symbol_table, output);
+	stream.reset();
+	output.reset();
+	fsm.set_a_command(1);
 	fsm.run();
-	document.getElementById("outText").value = fsm.outText;
+	stream.reset();
+	output.reset();
+	fsm.set_a_command(2);
+	fsm.run();
+	document.getElementById("outText").value = output.getOutText();
 }
+inTextarea.oninput = nand2tetris;
+/*
 var outText = "";
 function rand01(){
 	var inText = inTextarea.value;
@@ -235,9 +343,8 @@ function rand01(){
 	else outText += (Math.random()<0.5)?"0":"1";
 	document.getElementById("outText").value = outText;
 }
-
-inTextarea.oninput = nand2tetris;
-//inTextarea.oninput = rand01;
+inTextarea.oninput = rand01;
+*/
 </script>
 </body>
 </html>
